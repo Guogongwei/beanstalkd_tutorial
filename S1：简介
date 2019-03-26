@@ -1,0 +1,81 @@
+# beanstalkd 简介
+
+[TOC]
+
+beanstalkd 是一个简单的工作队列系统，设计用于后台异步执行耗时任务来降低 web 应用的页面延时。
+
+**要学习 Beanstalkd，我们首先要知道到我们 Beanstalkd 能够帮我们解决什么问题？ 当我们在业务上遇到了什么样的问题时从而面向 Beanstalkd 寻求帮助以及 Beanstalkd 在解决问题之后其的不足之处。**
+
+## 核心概念
+
+Beanstalkd 使用 生产者-消费者 模式，以下是其设计思想中的核心模式。
+
+* job - 任务：beanstalkd 中的基本单元。job 需要放在 tube 中，每个任务都要自己的 # 生命周期。
+* tube - 管道：某种类型的任务队列，是 Procedure 和 Consumer 操作的对象。在一个 Beanstalkd 服务中可以有多个 tube。
+* procedure - 生产者：产生任务，通过 put 将 job 放置到 tube 中。
+* consumer - 消费者：消费任务，通过 reserve、release、bury、delete 命令来改变任务的状态。
+
+## 任务生命周期
+
+Beanstalkd 中的 job 在其生命周期中可以有一系列的状态变化。一个典型的状态循环如下所示：
+
+```
+    put            reserve               delete
+  -----> [READY] ---------> [RESERVED] --------> *poof*
+```
+
+Procedure 通过 put 操作使一个任务处于 ready 状态，被 Consumer 取得开始执行后变为 reserve 状态，消费者执行结束，将该任务 delete，此时这个任务的生命状态周期结束，Beanstalkd 也不再维持该任务。
+
+* READY：需要立即处理的任务。
+* RESERVED：已经被消费者获取，正在被执行的任务。当任务处于 RESERVED 状态后，其他的消费者就不能再操作该任务。
+* DELETED：消息被删除
+
+当然，任务还有更多的状态，具体请查看 [协议](https://github.com/beanstalkd/beanstalkd/blob/v1.10/doc/protocol.md)
+
+## 服务端和客户端
+
+Beanstalkd分为服务端和客户端两部分。
+要使用Beanstalkd，首先需要在一或多台机器安装并运行beanstalkd服务端,服务端的安装方式如下：
+
+源码安装：
+```
+git clone https://github.com/beanstalkd/beanstalkd.git
+
+cd beanstalkd
+
+sudo make
+
+sudo make install
+```
+
+安装包安装：
+```
+$ sudo apt-get install beanstalkd
+```
+
+安装完成后，输入命令运行：
+```
+beanstalkd -l 127.0.0.1 -p 11300 &
+```
+具体的运行参数如下所示：
+
+    -b DIR - wal目录
+    -f MS - 指定MS毫秒内的 fsync (-f0 为"always fsync")
+    -F - 从不 fsync (默认)
+    -l ADDR - 指定监听地址（默认为：0.0.0.0）
+    -p PORT - 指定监听端口（默认为：11300）
+    -u USER - 用户与用户组
+    -z BYTE - 最大的任务大小（默认为：65535）
+    -s BYTE - 每个wal文件的大小（默认为：10485760）
+    -c - 压缩binlog（默认）
+    -n - 不压缩binlog
+
+
+**客户端**: 包含了Beanstalkd设计概念中的任务生产者（Producer）和消费者（Consumer）.
+
+
+[beanstalk客户端列表](https://github.com/kr/beanstalkd/wiki/client-libraries) 提供了各个语言的客户端实现，可以依照需要选择。
+
+## 协议
+
+Beanstalkd 自身实现了一套基于 TCP 的协议，如果现有客户端没有满足自己的需求，可以通过该协议自己实现。
